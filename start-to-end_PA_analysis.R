@@ -1,6 +1,6 @@
 # ==============================================================================
 # Title:     Retrospective analysis of clinical and environmental genotyping results revealing persistence of Pseudomonas aeruginosa in the water system of a large tertiary children’s hospital in England
-# Author:    Esha Sheth, Lindsay Case, Nicola Dwyer, John Poland, Fiona Shaw, Yu Wan, Beatriz Larru
+# Author:    Esha Sheth, Yu Wan
 # Affiliation: Department of Infection Prevention and Control/ Alder Hey Children's NHS Foundation Trust/ Department of Infection Prevention and Control, Alder Hey Children's Hospital Trust/ Department of Pathology, Alder Hey Children's Hospital Trust/ Department of Estates and Facilities, Alder Hey Children's Hospital Trust/ David Price Evans Global Health and Infectious diseases Research Group, University of Liverpool
 # Date:      March 2025
 # Version:   1.0
@@ -20,32 +20,23 @@
 # Contact:   [e.d.m.sheth@liverpool.ac.uk]
 # ==============================================================================
 
-install.packages("readxl")
-install.packages("dplyr")
-install.packages("tidyr")
+# Install and load packages
 
-library(readxl)
-library(dplyr)
-library(tidyr)
+install.packages("here")
+library(here)
+
 
 # Import UKHSA summary results 
 
-water_df <- read_excel("C:/Users/sheth/OneDrive - Alder Hey Children's NHS Foundation Trust/Documents/Water_pdfs/summary_water_180825.xlsx")
+setwd("C:/path/to/your/folder")
+
+water_df <- read_excel("filename.xlsx", sheet = "SheetName")
+
 
 # Clean imported data frame
 water_df <- water_df %>%
   drop_na(VNTR_Profile)
 
-# Install and load packages
-
-library(tidyverse)
-library(lubridate)
-
-setwd("C:/path/to/your/folder")
-
-# Read the original extracted csv
-
-water_df <- read_csv("summary_water_180825.csv", show_col_types = FALSE)
 
 # Initial cleaning & date parsing
 
@@ -74,9 +65,9 @@ df <- water_df %>%
 
 # Check Source and Isolation_site assignment on excel
 
-library(writexl)
 
-write_xlsx(df, "PA_intermediate_cleaned.xlsx")
+write_xlsx(df, "filename_cleaned.xlsx")
+
 
 # Data anonymisation #####
 
@@ -88,16 +79,16 @@ df_anon <- df %>%
     across(c(Harmonised_Date, VNTR_Profile, Organism, Isolation_Site, Source, Isolation_Class, AHPa_ID))
   )
 
-write_xlsx(df_anon, "PA_anonymised_full.xlsx")
+write_xlsx(df_anon, "filename_cleaned_anonymised.xlsx")
 
 # Deduplication #####
 
-df_dedup <- df_anon %>%
-  distinct(Harmonised_Date, VNTR_Profile, Patient_Name, .keep_all = TRUE)
+df_dedup <- water_df %>%
+  distinct(Harmonised_collection_dates, VNTR_Profile, Patient_Name, .keep_all = TRUE)
 
 nrow(df_dedup)
 
-write_xlsx(df_dedup, "PA_deduplicated.xlsx")
+write_xlsx(df_dedup, "filename_deduplicated.xlsx")
 
 # Create unique summary table (with cluster labels) #####
 # Make sure all 'Unknowns' are clarified manually and import consolidated clean file for next steps
@@ -125,43 +116,50 @@ unique_summary <- df_dedup %>%
     Cluster_Label = paste0("Cluster ", row_number(),
                            " (n=", Count, ")")
   ) %>%
-  select(Cluster_Label, VNTR_Profile, Count, everythig())
+  select(Cluster_Label, VNTR_Profile, Count, everything())
 
 write_xlsx(unique_summary, "unique_vntr_summary.xlsx")
+
+unique_summary <- unique_summary %>%
+  mutate(Cluster_ID = paste0("Cluster ", row_number(),
+                             " (n=", Count, ")"))
 
 # Create datasets for iToL ####
 # Clean and sort imported dataframe
 
-vntr_df <- water_df_3 |>
-  separate(VNTR_Profile, into = paste0("Gene", 1:9), sep = ",", convert = TRUE) |>
-  select(Gene1:Gene9) |>
+vntr_df <- water_df %>%
+  separate(VNTR_Profile, into = paste0("Gene", 1:9), sep = ",", convert = TRUE) %>%
+  select(Gene1:Gene9) %>%
   mutate(across(Gene1:Gene9, ~ifelse(. == "-", 0, .)))
 
-# Generate a distance matrix
-Isolate_ID <- paste0("AHPa", sprintf("%03d", 1 : 405))
+# Generate a distance matrix; n is the number of isolates
 
-D <- matrix(0, nrow = 405, ncol = 405, dimnames = list(Isolate_ID, Isolate_ID))
+Isolate_ID <- paste0("AHPa", sprintf("%03d", 1 : n))
 
-for (i in 1 : 404) {
-  for (j in 2: 405) {
+D <- matrix(0, nrow = n, ncol = n, dimnames = list(Isolate_ID, Isolate_ID))
+
+for (i in 1 : n-1) {
+  for (j in 2: n) {
     d <- sum(vntr_df[i, ] != vntr_df[j, ])
     D[i, j] <- d
     D[j, i] <- d
   }
 }
 
-write.csv(D, file = "VNTR_distance_matrix_20260311.csv")
+write.csv(D, file = "VNTR_distance_matrix.csv")
 
 # Tree reconstruction
 
 install.packages("ape")
 install.packages("phangorn")
+library(ape)
+library(phangorn)
 
 tr_nj <- nj(as.dist(D))
-write.tree(tr_nj, file = "VNTR_NJ_20261103.newick")
+write.tree(tr_nj, file = "VNTR_NJ.newick")
 
 tr_nj_mid <- ladderize(midpoint(tr_nj), right = FALSE)
-write.tree(tr_nj_mid, file = "Output/VNTR_NJ_midpoint-rooted_20261103.newick")
+write.tree(tr_nj_mid, file = "Output/VNTR_NJ_midpoint-rooted.newick")
 
 # Comparison of distances
 D_tr <- cophenetic.phylo(tr_nj_mid)
@@ -174,7 +172,7 @@ r_tr <- cor(as.vector(D_tr), as.vector(D_tr_original))
 dnd <- hclust(d = as.dist(D), method ="complete")
 tr_dnd <- as.phylo(dnd)
 D_dnd <- cophenetic.phylo(tr_dnd)
-write.tree(tr_dnd, file = "VNTR_hclust_complete_20261103.newick")
+write.tree(tr_dnd, file = "VNTR_hclust_complete.newick")
 r_dnd_D <- cor(as.vector(D), as.vector(D_dnd))
 r_dnd_tr <- cor(as.vector(D_tr), as.vector(D_dnd))
 
@@ -183,7 +181,7 @@ dnd_avg <- hclust(d = as.dist(D), method = "average")
 tr_dnd_avg <- as.phylo(dnd_avg)
 D_dnd_avg <- cophenetic.phylo(tr_dnd_avg)
 r_dnd_avg_D <- cor(as.vector(D), as.vector(D_dnd_avg))
-write.tree(ladderize(tr_dnd_avg, right = FALSE), file = "Output/VNTR_hclust_average_20251117.newick")
+write.tree(ladderize(tr_dnd_avg, right = FALSE), file = "Output/VNTR_hclust_average.newick")
 
 dnd_sin <- hclust(d = as.dist(D), method = "single")
 tr_dnd_sin <- as.phylo(dnd_sin)
@@ -191,11 +189,11 @@ D_dnd_sin <- cophenetic.phylo(tr_dnd_sin)
 r_dnd_sin_D <- cor(as.vector(D), as.vector(D_dnd_sin))
 plot(dnd_sin)
 
-water_df_3 <- water_df_3 %>%
+water_df <- water_df %>%
   select(-Isolate_ID) %>%                     # remove old column
   mutate(Isolate_ID = paste0("AHPa", 
                              sprintf("%03d", row_number())))
-itol_source <- water_df_3 %>%
+itol_source <- water_df %>%
   select(Isolate_ID, Isolation_Class)
 itol_source <- itol_source %>%
   mutate(color = case_when(
@@ -205,11 +203,12 @@ itol_source <- itol_source %>%
     TRUE          ~ "#CCCCCC" 
   )) # grey for anything else)
 
+# Sort columns to make it copy-paste ready for the iToL colorstrip template, which can found on iToL help page
+
 itol_source <- itol_source[, c(1, 3, 2)]
 
 
-
-write.table(itol_source, file = "vntr_classification_colorstrip_032026.txt",
+write.table(itol_source, file = "vntr_classification_colorstrip.txt",
             sep = "\t",
             row.names = FALSE,
             col.names = FALSE,
@@ -217,13 +216,13 @@ write.table(itol_source, file = "vntr_classification_colorstrip_032026.txt",
 
 # Itol year colorstrip
 
-itol_date <- water_df_3 %>%
+itol_date <- water_df %>%
   select(Isolate_ID, Harmonised_collection_dates)
 
 itol_date <- itol_date %>%
   mutate(Year = format(as.Date(Harmonised_collection_dates), "%Y"))
 
-years <- 2015:2024
+years <- 2016:2024
 
 # Soft rainbow using HCL (low chroma = muted)
 year_colors <- setNames(
@@ -235,14 +234,24 @@ year_colors <- setNames(
   years
 )
 
+install.packages("colorspace")
+library(colorspace)
+
+colors_rainbow <- qualitative_hcl(9, palette = "Set 3")
+
+year_colors <- setNames(colors_rainbow, years)
+
 itol_date <- itol_date %>%
   mutate(color = year_colors[Year])
 
-
-write.table(itol_date, file = "vntr_year_colorstrip_032026.txt",
+write.table(itol_date, file = "vntr_year_colorstrip_.txt",
             sep = "\t",
             row.names = FALSE,
             col.names = FALSE,
             quote = FALSE)
+
+
+
+
 
 
