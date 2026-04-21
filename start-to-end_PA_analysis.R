@@ -23,7 +23,13 @@
 # Install and load packages
 
 install.packages("here")
+install.packages("dplyr")
+install.packages("tidyr")
+install.packages("readxl")
 library(here)
+library(dplyr)
+library(tidyr)
+library(readxl)
 
 
 # Import UKHSA summary results 
@@ -152,14 +158,13 @@ write.csv(D, file = "VNTR_distance_matrix.csv")
 
 install.packages("ape")
 install.packages("phangorn")
+
 library(ape)
 library(phangorn)
 
 tr_nj <- nj(as.dist(D))
 write.tree(tr_nj, file = "VNTR_NJ.newick")
 
-tr_nj_mid <- ladderize(midpoint(tr_nj), right = FALSE)
-write.tree(tr_nj_mid, file = "Output/VNTR_NJ_midpoint-rooted.newick")
 
 # Comparison of distances
 D_tr <- cophenetic.phylo(tr_nj_mid)
@@ -176,18 +181,6 @@ write.tree(tr_dnd, file = "VNTR_hclust_complete.newick")
 r_dnd_D <- cor(as.vector(D), as.vector(D_dnd))
 r_dnd_tr <- cor(as.vector(D_tr), as.vector(D_dnd))
 
-#Alternative dendogram methods #########
-dnd_avg <- hclust(d = as.dist(D), method = "average")
-tr_dnd_avg <- as.phylo(dnd_avg)
-D_dnd_avg <- cophenetic.phylo(tr_dnd_avg)
-r_dnd_avg_D <- cor(as.vector(D), as.vector(D_dnd_avg))
-write.tree(ladderize(tr_dnd_avg, right = FALSE), file = "Output/VNTR_hclust_average.newick")
-
-dnd_sin <- hclust(d = as.dist(D), method = "single")
-tr_dnd_sin <- as.phylo(dnd_sin)
-D_dnd_sin <- cophenetic.phylo(tr_dnd_sin)
-r_dnd_sin_D <- cor(as.vector(D), as.vector(D_dnd_sin))
-plot(dnd_sin)
 
 water_df <- water_df %>%
   select(-Isolate_ID) %>%                     # remove old column
@@ -249,9 +242,6 @@ write.table(itol_date, file = "vntr_year_colorstrip_.txt",
             row.names = FALSE,
             col.names = FALSE,
             quote = FALSE)
-
-
-
 
 
 
